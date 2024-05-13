@@ -201,13 +201,12 @@ DCL_HOOK_FUNC(int, pthread_attr_destroy, void *target) {
 
 void initialize_jni_hook();
 
-DCL_HOOK_FUNC(char *, strdup, const char *s) {
-    if (s == "com.android.internal.os.ZygoteInit"sv) {
-        LOGV("strdup %s\n", s);
-        initialize_jni_hook();
-    }
-    return old_strdup(s);
+DCL_HOOK_FUNC(void, androidSetCreateThreadFunc, void *func) {
+    LOGD("androidSetCreateThreadFunc\n");
+    initialize_jni_hook();
+    old_androidSetCreateThreadFunc(func);
 }
+
 
 #undef DCL_HOOK_FUNC
 
@@ -850,7 +849,7 @@ void hook_functions() {
 
     PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, fork);
     PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, unshare);
-    PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, strdup);
+    PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, androidSetCreateThreadFunc);
     PLT_HOOK_REGISTER_SYM(android_runtime_dev, android_runtime_inode, "__android_log_close", android_log_close);
     hook_commit();
 
