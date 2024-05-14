@@ -4,6 +4,3 @@
 [submodule "loader/src/external/_xDL"]
 	path = loader/src/external/_xDL
 	url = https://github.com/hexhacking/xDL.git
-[submodule "loader/src/external/system_properties"]
-	path = loader/src/external/system_properties
-	url = https://github.com/topjohnwu/system_properties
