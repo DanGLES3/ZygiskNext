@@ -26,7 +26,6 @@ using namespace std::string_view_literals;
 
 #define STOPPED_WITH(sig, event) WIFSTOPPED(status) && (status >> 8 == ((sig) | (event << 8)))
 
-static void updateStatus();
 
 enum TracingState {
     TRACING = 1,
@@ -108,7 +107,6 @@ public:
 };
 
 static TracingState tracing_state = TRACING;
-static std::string prop_path;
 
 
 struct Status {
@@ -206,7 +204,6 @@ struct SocketHandler : public EventHandler {
                         LOGI("start tracing init");
                         tracing_state = TRACING;
                     }
-                    updateStatus();
                     break;
                 case STOP:
                     if (tracing_state == TRACING) {
@@ -214,51 +211,40 @@ struct SocketHandler : public EventHandler {
                         tracing_state = STOPPING;
                         monitor_stop_reason = "user requested";
                         ptrace(PTRACE_INTERRUPT, 1, 0, 0);
-                        updateStatus();
                     }
                     break;
                 case EXIT:
                     LOGI("prepare for exit ...");
                     tracing_state = EXITING;
                     monitor_stop_reason = "user requested";
-                    updateStatus();
                     loop.Stop();
                     break;
                 case ZYGOTE64_INJECTED:
                     status64.zygote_injected = true;
-                    updateStatus();
                     break;
                 case ZYGOTE32_INJECTED:
                     status32.zygote_injected = true;
-                    updateStatus();
                     break;
                 case DAEMON64_SET_INFO:
                     LOGD("received daemon64 info %s", msg.data);
                     status64.daemon_info = std::string(msg.data);
-                    updateStatus();
                     break;
                 case DAEMON32_SET_INFO:
                     LOGD("received daemon32 info %s", msg.data);
                     status32.daemon_info = std::string(msg.data);
-                    updateStatus();
                     break;
                 case DAEMON64_SET_ERROR_INFO:
                     LOGD("received daemon64 error info %s", msg.data);
                     status64.daemon_running = false;
                     status64.daemon_error_info = std::string(msg.data);
-                    updateStatus();
                     break;
                 case DAEMON32_SET_ERROR_INFO:
                     LOGD("received daemon32 error info %s", msg.data);
                     status32.daemon_running = false;
                     status32.daemon_error_info = std::string(msg.data);
-                    updateStatus();
                     break;
                 case SYSTEM_SERVER_STARTED:
-                    LOGD("system server started, mounting prop");
-                    if (mount(prop_path.c_str(), "/data/adb/modules/zygisksu/module.prop", nullptr, MS_BIND, nullptr) == -1) {
-                        PLOGE("failed to mount prop");
-                    }
+                    LOGD("system server started");
                     break;
             }
         }
@@ -291,10 +277,6 @@ CREATE_ZYGOTE_START_COUNTER(32)
 
 static bool ensure_daemon_created(bool is_64bit) {
     auto &status = is_64bit ? status64 : status32;
-    if (is_64bit) {
-        LOGD("new zygote started, unmounting prop ...");
-        umount2("/data/adb/modules/zygisksu/module.prop", MNT_DETACH);
-    }
     status.zygote_injected = false;
     if (status.daemon_pid == -1) {
         auto pid = fork();
@@ -405,7 +387,6 @@ public:
                     if (status##abi.daemon_error_info.empty()) { \
                         status##abi.daemon_error_info = status_str; \
                     } \
-                    updateStatus(); \
                     continue; \
                 }
                 CHECK_DAEMON_EXIT(64)
@@ -470,7 +451,6 @@ public:
                                 }
                             }
                         } while (false);
-                        updateStatus();
                     } else {
                         LOGW("process %d received unknown status %s", pid,
                              parse_status(status).c_str());
@@ -493,89 +473,9 @@ public:
 static std::string pre_section;
 static std::string post_section;
 
-static void updateStatus() {
-    auto prop = xopen_file(prop_path.c_str(), "w");
-    std::string status_text = "monitor:";
-    switch (tracing_state) {
-        case TRACING:
-            status_text += "😋tracing";
-            break;
-        case STOPPING:
-            [[fallthrough]];
-        case STOPPED:
-            status_text += "❌stopped";
-            break;
-        case EXITING:
-            status_text += "❌exited";
-            break;
-    }
-    if (tracing_state != TRACING && !monitor_stop_reason.empty()) {
-        status_text += "(";
-        status_text += monitor_stop_reason;
-        status_text += ")";
-    }
-    status_text += ",";
-#define WRITE_STATUS_ABI(suffix) \
-    if (status##suffix.supported) { \
-        status_text += " zygote" #suffix ":"; \
-        if (tracing_state != TRACING) status_text += "❓unknown,"; \
-        else if (status##suffix.zygote_injected) status_text += "😋injected,"; \
-        else status_text += "❌not injected,"; \
-        status_text += " daemon" #suffix ":"; \
-        if (status##suffix.daemon_running) {  \
-            status_text += "😋running";       \
-            if (!status##suffix.daemon_info.empty()) { \
-                status_text += "("; \
-                status_text += status##suffix.daemon_info; \
-                status_text += ")"; \
-            } \
-        } else { \
-            status_text += "❌crashed"; \
-            if (!status##suffix.daemon_error_info.empty()) { \
-                status_text += "("; \
-                status_text += status##suffix.daemon_error_info; \
-                status_text += ")"; \
-            } \
-        } \
-    }
-    WRITE_STATUS_ABI(64)
-    WRITE_STATUS_ABI(32)
-    fprintf(prop.get(), "%s[%s] %s", pre_section.c_str(), status_text.c_str(), post_section.c_str());
-}
-
-static bool prepare_environment() {
-    prop_path = zygiskd::GetTmpPath() + "/module.prop";
-    close(open(prop_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644));
-    auto orig_prop = xopen_file("./module.prop", "r");
-    if (orig_prop == nullptr) {
-        PLOGE("failed to open orig prop");
-        return false;
-    }
-    bool post = false;
-    file_readline(false, orig_prop.get(), [&](std::string_view line) -> bool {
-        if (line.starts_with("description=")) {
-            post = true;
-            pre_section += "description=";
-            post_section += line.substr(sizeof("description"));
-        } else {
-            if (post) {
-                post_section += line;
-            } else {
-                pre_section += line;
-            }
-        }
-        return true;
-    });
-    updateStatus();
-    return true;
-}
-
 void init_monitor() {
     LOGI("Zygisk Next %s", ZKSU_VERSION);
     LOGI("init monitor started");
-    if (!prepare_environment()) {
-        exit(1);
-    }
     SocketHandler socketHandler{};
     socketHandler.Init();
     SigChldHandler ptraceHandler{};
