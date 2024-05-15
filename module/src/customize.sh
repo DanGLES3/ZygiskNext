@@ -142,6 +142,10 @@ else
   mv "$MODPATH/machikado.arm" "$MODPATH/machikado"
 fi
 
+ui_print " Generating random tmp directory"
+RAND=$(tr -dc 'a-f0-9' </dev/urandom | head -c 18)
+echo -n "/dev/$RAND" > "$MODPATH/rand"
+
 ui_print "- Setting permissions"
 set_perm_recursive "$MODPATH/bin" 0 0 0755 0755
 set_perm_recursive "$MODPATH/lib" 0 0 0755 0644 u:object_r:system_lib_file:s0
