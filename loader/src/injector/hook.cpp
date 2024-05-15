@@ -155,6 +155,8 @@ DCL_HOOK_FUNC(int, unshare, int flags) {
             }
         }
 
+        old_unshare(CLONE_NEWNS);
+
         /* Zygisksu changed: No umount app_process */
 
         // Restore errno back to 0
