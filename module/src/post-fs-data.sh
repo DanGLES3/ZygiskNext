@@ -26,8 +26,11 @@ create_sys_perm() {
   chcon u:object_r:system_file:s0 $1
 }
 
-export TMP_PATH=/sbin
-[ -d /sbin ] || export TMP_PATH=$(cat $MODDIR/rand)
+export TMP_PATH=/data/adb/zygisksu
+
+if [ -d $TMP_PATH ]; then
+  rm -rf $TMP_PATH
+fi
 
 create_sys_perm $TMP_PATH
 
