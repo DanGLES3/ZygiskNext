@@ -27,7 +27,7 @@ create_sys_perm() {
 }
 
 export TMP_PATH=/sbin
-[ -d /sbin ] || export TMP_PATH=$(cat $MODDIR/rand)
+[ -d /sbin ] || export TMP_PATH=/debug_ramdisk
 
 create_sys_perm $TMP_PATH
 
