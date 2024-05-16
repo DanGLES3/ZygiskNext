@@ -48,10 +48,6 @@ void revert_unmount_ksu() {
             && std::find(KSU_PARTITIONS.begin(), KSU_PARTITIONS.end(), info.target) != KSU_PARTITIONS.end()) {
             targets.emplace_back(info.target);
         }
-        // Unmount /debug_ramdisk
-        if (info.target.starts_with("/debug_ramdisk")) {
-            targets.emplace_back(info.target);
-        }
         // Unmount fuse
         if (info.type == "fuse" && info.source == ZYGISK_FUSE_SOURCE) {
             targets.emplace_back(info.target);
@@ -116,10 +112,6 @@ void revert_unmount_apatch() {
         if (info.type == "overlay"
             && info.source == APATCH_OVERLAY_SOURCE
             && std::find(KSU_PARTITIONS.begin(), KSU_PARTITIONS.end(), info.target) != KSU_PARTITIONS.end()) {
-            targets.emplace_back(info.target);
-        }
-        // Unmount /debug_ramdisk
-        if (info.target.starts_with("/debug_ramdisk")) {
             targets.emplace_back(info.target);
         }
         // Unmount fuse
